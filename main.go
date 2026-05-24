@@ -1,158 +1,123 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
+	"encoding/json"
+	"net/http"
 	"os"
 	"strconv"
 )
 
 type Task struct {
-	TaskName  string
-	completed bool
+	ID       int    `json:"id"`
+	TaskName string `json:"taskName"`
+	Completed bool   `json:"completed"`
 }
 
 var tasks []Task
-
-func addTask(task string) {
-	newTask := Task{TaskName: task, completed: false}
-	tasks = append(tasks, newTask)
-	fmt.Println("Task Added")
-}
-
-func listTasks() {
-	if len(tasks) == 0 {
-		fmt.Println("No tasks")
-		return
-	}
-
-	for i, task := range tasks {
-		status := "n"
-		if task.completed {
-			status = "d"
-		}
-		fmt.Printf("%d. %s [%s]\n", i+1, task.TaskName, status)
-	}
-}
-
-func addComment(i int) {
-	if i >= 1 && i <= len(tasks) {
-		tasks[i-1].completed = true
-		fmt.Println("Task marked as completed")
-	} else {
-		fmt.Println("invalid index")
-	}
-}
-
-func editTask(i int, newString string) {
-	if i >= 1 && i <= len(tasks) {
-		tasks[i-1].TaskName = newString
-		fmt.Println("Task edited")
-	} else {
-		fmt.Println("invalid index")
-	}
-}
-
-func deleteTask(i int) {
-	if i >= 1 && i <= len(tasks) {
-		tasks = append(tasks[:i-1], tasks[i:]...)
-		fmt.Println("Task deleted")
-	} else {
-		fmt.Println("invalid index")
-	}
-}
+var currentID = 1
 
 func main() {
-	scanner := bufio.NewScanner(os.Stdin)
+	corsMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
-	for {
-		fmt.Println("\nOptions")
-		fmt.Println("1 Add Task")
-		fmt.Println("2 List Tasks")
-		fmt.Println("3 Mark as completed")
-		fmt.Println("4 Edit Task")
-		fmt.Println("5 Delete Task")
-		fmt.Println("6 Exit")
+	mux := http.NewServeMux()
 
-		fmt.Print("Enter choice (1,2,3,4,5,6): ")
-
-		if !scanner.Scan() {
-			fmt.Println("\nInput closed")
+	// 2. GET VA POST YO'LAKLARI (Tasklarni ko'rish va yangi qo'shish)
+	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		if r.Method == "GET" {
+			json.NewEncoder(w).Encode(tasks)
 			return
 		}
+		
+		if r.Method == "POST" {
+			var incoming struct {
+				TaskName string `json:"taskName"`
+			}
+			err := json.NewDecoder(r.Body).Decode(&incoming)
+			if err != nil || incoming.TaskName == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			
+			newTask := Task{
+				ID:        currentID,
+				TaskName:  incoming.TaskName,
+				Completed: false,
+			}
+			currentID++
+			tasks = append(tasks, newTask)
+			
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(newTask)
+			return
+		}
+	})
 
-		input := scanner.Text()
-		choice, err := strconv.Atoi(input)
+	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		idStr := r.URL.Path[len("/api/tasks/"):]
+		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			fmt.Println("Invalid choice")
-			continue
-		}
-
-		switch choice {
-		case 1:
-			fmt.Print("Enter Task: ")
-			if !scanner.Scan() {
-				fmt.Println("\nInput closed")
-				return
-			}
-			taskInput := scanner.Text()
-			addTask(taskInput)
-
-		case 2:
-			listTasks()
-
-		case 3:
-			fmt.Print("Enter task index to mark completed: ")
-			if !scanner.Scan() {
-				fmt.Println("\nInput closed")
-				return
-			}
-			indexInput, err := strconv.Atoi(scanner.Text())
-			if err != nil {
-				fmt.Println("Invalid index")
-				continue
-			}
-			addComment(indexInput)
-
-		case 4:
-			fmt.Print("Enter task index to edit: ")
-			if !scanner.Scan() {
-				fmt.Println("\nInput closed")
-				return
-			}
-			indexInput, err := strconv.Atoi(scanner.Text())
-			if err != nil {
-				fmt.Println("Invalid index")
-				continue
-			}
-
-			fmt.Print("Enter new task name: ")
-			if !scanner.Scan() {
-				fmt.Println("\nInput closed")
-				return
-			}
-			newTaskInput := scanner.Text()
-			editTask(indexInput, newTaskInput)
-
-		case 5:
-			fmt.Print("Enter task index to delete: ")
-			if !scanner.Scan() {
-				fmt.Println("\nInput closed")
-				return
-			}
-			indexInput, err := strconv.Atoi(scanner.Text())
-			if err != nil {
-				fmt.Println("Invalid index")
-				continue
-			}
-			deleteTask(indexInput)
-
-		case 6:
-			fmt.Println("Bye!")
+			w.WriteHeader(http.StatusBadRequest)
 			return
-
-		default:
-			fmt.Println("Invalid choice")
 		}
+
+		if r.Method == "DELETE" {
+			for i, t := range tasks {
+				if t.ID == id {
+					tasks = append(tasks[:i], tasks[i+1:]...)
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(map[string]string{"message": "Task deleted"})
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if r.Method == "PUT" {
+			var incoming struct {
+				TaskName  string `json:"taskName"`
+				Completed *bool  `json:"completed"`
+			}
+			json.NewDecoder(r.Body).Decode(&incoming)
+
+			for i, t := range tasks {
+				if t.ID == id {
+					if incoming.TaskName != "" {
+						tasks[i].TaskName = incoming.TaskName
+					}
+					if incoming.Completed != nil {
+						tasks[i].Completed = *incoming.Completed
+					}
+					json.NewEncoder(w).Encode(tasks[i])
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+	})
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" 
 	}
+
+	// Serverni start qilish va CORS middleware'ni ulash
+	http.ListenAndServe(":"+port, corsMiddleware(mux))
 }
