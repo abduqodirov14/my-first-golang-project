@@ -8,8 +8,8 @@ import (
 )
 
 type Task struct {
-	ID       int    `json:"id"`
-	TaskName string `json:"taskName"`
+	ID        int    `json:"id"`
+	TaskName  string `json:"taskName"`
 	Completed bool   `json:"completed"`
 }
 
@@ -22,26 +22,26 @@ func main() {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			
+
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
-	})
+	}
 
 	mux := http.NewServeMux()
 
 	// 2. GET VA POST YO'LAKLARI (Tasklarni ko'rish va yangi qo'shish)
 	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if r.Method == "GET" {
 			json.NewEncoder(w).Encode(tasks)
 			return
 		}
-		
+
 		if r.Method == "POST" {
 			var incoming struct {
 				TaskName string `json:"taskName"`
@@ -51,7 +51,7 @@ func main() {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			
+
 			newTask := Task{
 				ID:        currentID,
 				TaskName:  incoming.TaskName,
@@ -59,7 +59,7 @@ func main() {
 			}
 			currentID++
 			tasks = append(tasks, newTask)
-			
+
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(newTask)
 			return
@@ -68,7 +68,7 @@ func main() {
 
 	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		idStr := r.URL.Path[len("/api/tasks/"):]
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
@@ -115,7 +115,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" 
+		port = "8080"
 	}
 
 	// Serverni start qilish va CORS middleware'ni ulash
